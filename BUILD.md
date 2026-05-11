@@ -2,24 +2,8 @@
 
 Prebuilt Cube.js for AlmaLinux 9 / RHEL 9.
 
-Lab builds release tarballs + a runtime image. On-prem just pulls the image
-(or rebuilds from the release tarball).
-
-```
-  [lab]                                            [on-prem RHEL 9]
-  ┌────────────┐  builds  ┌──────────────────┐
-  │ cubejs/cube│ ──────►  │ /cube-src tarball│ ──┐
-  │ (upstream) │          └──────────────────┘   │
-  └────────────┘                                 ▼
-                                       GH release: kingfadzi/cube-el9
-                                                 │
-                          ┌──────────────────────┴──────────────────────┐
-                          ▼                                             ▼
-              docker.butterflycluster.com/                 docker compose build
-              cube/cube:vX.Y.Z-el9                         (curls tarball back)
-                          │                                             │
-                          └──────────────► docker compose up ◄──────────┘
-```
+Lab cuts a release tarball; on-prem rebuilds the runtime image against the
+blessed RHEL UBI 9 base, pulling the same tarball from the GitHub release.
 
 ## Prereqs
 
@@ -30,7 +14,8 @@ Lab builds release tarballs + a runtime image. On-prem just pulls the image
 
 **On-prem** (RHEL 9):
 - `docker compose`
-- Either: pull access to `docker.butterflycluster.com`, **or** internet to GitHub releases
+- Reachability to GitHub releases (the runtime image is built locally against the blessed RHEL UBI 9 base — the lab's AlmaLinux-based image is **not** consumed on-prem)
+- Pull access to your on-prem registry for the RHEL UBI 9 base image
 - Postgres reachable from the docker host
 
 ## Lab — cut a release
@@ -41,8 +26,8 @@ CUBE_VERSION=v1.6.44 ./build/build-release.sh
 ```
 
 Takes ~10 min. Produces:
-- GH release `cube-v1.6.44-el9` on `kingfadzi/cube-el9` with `cube-runtime-*.tar.gz`, `cubestored-*`, `SHA256SUMS`.
-- Image `docker.butterflycluster.com/cube/cube:v1.6.44-el9` pushed to your registry.
+- GH release `cube-v1.6.44-el9` on `kingfadzi/cube-el9` with `cube-runtime-*.tar.gz`, `cubestored-*`, `SHA256SUMS` — **this is what on-prem consumes**.
+- Image `docker.butterflycluster.com/cube/cube:v1.6.44-el9` pushed to your registry — lab convenience only (AlmaLinux 9 base; not for on-prem).
 
 Useful flags:
 ```bash
@@ -81,14 +66,8 @@ CUBESTORE_DATA_DIR=/cube/.cubestore
 
 ## On-prem — start cube
 
-**Path A — pull prebuilt image from registry** (preferred):
-```bash
-docker pull docker.butterflycluster.com/cube/cube:${CUBE_VERSION}-el9
-docker tag  docker.butterflycluster.com/cube/cube:${CUBE_VERSION}-el9 local/cube:${CUBE_VERSION}-el9
-docker compose up -d cube
-```
-
-**Path B — rebuild from GH release tarball** (no registry access needed):
+Build the runtime image against the blessed RHEL UBI 9 base (curls the
+release tarball from GitHub, sha-verifies, extracts), then bring it up:
 ```bash
 docker compose build cube
 docker compose up -d cube
@@ -119,9 +98,7 @@ CUBE_VERSION=v1.6.45 ./build/build-release.sh
 On-prem:
 ```bash
 sed -i 's/^CUBE_VERSION=.*/CUBE_VERSION=v1.6.45/' .env
-docker compose pull cube && docker compose up -d cube         # path A
-# or
-docker compose build cube && docker compose up -d cube        # path B
+docker compose build cube && docker compose up -d cube
 ```
 
 ## Troubleshooting
@@ -129,7 +106,7 @@ docker compose build cube && docker compose up -d cube        # path B
 | Symptom | Fix |
 |---|---|
 | `cubestored ... LOCK: Resource temporarily unavailable` | `docker compose down cube && docker volume rm webaapps_cubestore_data && docker compose up -d cube` |
-| `pull access denied for local/cube` warning | Cosmetic. `docker compose up` tries pull before falling back to build. Either ignore, or `docker compose build cube` first. |
+| `pull access denied for local/cube` warning | Cosmetic. `docker compose up` tries pull before falling back to build. Run `docker compose build cube` first to silence it. |
 | `Repository is empty` from `gh release create` | Script auto-seeds with a README if `AUTO_INIT_REPO=1` (default). Re-run. |
 | Runtime image build hits HTTP 404 on tarball | Release didn't publish — check `gh release view cube-${CUBE_VERSION}-el9 --repo kingfadzi/cube-el9`. |
 | Cube CLI says "Unavailable. Please run this command from project directory" | Container missing `CUBEJS_DOCKER_IMAGE_TAG`. Set in `.env` (already wired in `Dockerfile.runtime`). |
