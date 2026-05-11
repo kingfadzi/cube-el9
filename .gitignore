@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+
+dist/
+vendor/cube-src.tar.gz
+vendor/cubestored
+
+conf/.cubestore/
+
+.claude/
+.DS_Store
+*.log

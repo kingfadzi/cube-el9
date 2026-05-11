@@ -1,0 +1,29 @@
+services:
+  cube:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+      args:
+        RUNTIME_BASE_IMAGE: ${RUNTIME_BASE_IMAGE:?RUNTIME_BASE_IMAGE is required in .env}
+        CUBE_VERSION: ${CUBE_VERSION:-v1.6.44}
+        RELEASE_BASE_URL: ${RELEASE_BASE_URL:-https://github.com/kingfadzi/cube-el9/releases/download}
+        HTTP_PROXY: ${HTTP_PROXY-}
+        HTTPS_PROXY: ${HTTPS_PROXY-}
+        NO_PROXY: ${NO_PROXY-}
+    image: local/cube:${CUBE_VERSION:-v1.6.44}-el9
+    ports:
+      - "4000:4000"   # Cube API + Playground
+      - "3030:3030"   # cubestore-dev MySQL wire (mostly internal)
+    env_file: .env
+    volumes:
+      - ./conf:/cube/conf
+      - cubestore_data:/cube/.cubestore
+    # Lets the container reach a Postgres on the Docker host via
+    # CUBEJS_DB_HOST=host.docker.internal. Harmless if you point at a
+    # remote DB instead.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+volumes:
+  cubestore_data:

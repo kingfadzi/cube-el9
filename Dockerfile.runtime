@@ -1,0 +1,86 @@
+# syntax=docker/dockerfile:1.7
+#
+# Slim on-prem runtime image for Cube.js.
+#
+# Pulls a prebuilt /cube tree (compiled in the lab on AlmaLinux 9) from a
+# GitHub release and assembles a RHEL 9 / AL9 runtime. No compilers, no
+# yarn, no source — runs from prebuilt binaries.
+#
+# Build:
+#   docker compose build cube
+#
+# Required build args (fed from .env via docker compose):
+#   RUNTIME_BASE_IMAGE   EL9 base image (AL9 in lab, RHEL 9 on-prem)
+#   CUBE_VERSION         Cube tag (e.g. v1.6.44) — must match a published release
+#   RELEASE_BASE_URL     e.g. https://github.com/kingfadzi/cube-el9/releases/download
+
+ARG RUNTIME_BASE_IMAGE
+FROM ${RUNTIME_BASE_IMAGE}
+
+ARG CUBE_VERSION
+ARG RELEASE_BASE_URL=https://github.com/kingfadzi/cube-el9/releases/download
+# Sha256 of the runtime tarball. Optional but recommended: passing it from
+# build-release.sh both pins the asset content and busts BuildKit's cache
+# when the tarball changes under an unchanged URL (otherwise the curl+extract
+# layer would be falsely cached on republish).
+ARG RUNTIME_TARBALL_SHA256=
+ARG HTTP_PROXY=
+ARG HTTPS_PROXY=
+ARG NO_PROXY=
+ARG CORP_CA_BUNDLE=Dockerfile.runtime
+
+ENV HTTP_PROXY=$HTTP_PROXY \
+    HTTPS_PROXY=$HTTPS_PROXY \
+    NO_PROXY=$NO_PROXY \
+    http_proxy=$HTTP_PROXY \
+    https_proxy=$HTTPS_PROXY \
+    no_proxy=$NO_PROXY \
+    CUBEJS_DOCKER_IMAGE_VERSION=$CUBE_VERSION \
+    CUBEJS_DOCKER_IMAGE_TAG=el9-prebuilt \
+    NODE_ENV=production \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    PYTHONUNBUFFERED=1 \
+    NODE_PATH=/cube/conf/node_modules:/cube/node_modules
+
+# Runtime libs only. curl is needed to fetch the release tarball.
+RUN dnf -y install --allowerasing --setopt=install_weak_deps=False \
+      openssl-libs python3.11 ca-certificates curl tar gzip \
+ && dnf clean all
+
+# Optional corporate CA bundle (defaults to copying this Dockerfile — no-op).
+COPY ${CORP_CA_BUNDLE} /tmp/corp-ca.pem
+RUN if grep -q 'BEGIN CERTIFICATE' /tmp/corp-ca.pem 2>/dev/null; then \
+      cp /tmp/corp-ca.pem /etc/pki/ca-trust/source/anchors/corp-ca.pem && \
+      update-ca-trust; \
+    fi
+ENV NODE_EXTRA_CA_CERTS=/etc/pki/tls/certs/ca-bundle.crt
+
+# Pull the prebuilt runtime tarball + checksums and extract to /cube.
+WORKDIR /cube
+RUN set -eux; \
+    : "${CUBE_VERSION:?CUBE_VERSION build-arg required}"; \
+    TAG="cube-${CUBE_VERSION}-el9"; \
+    TAR="cube-runtime-${CUBE_VERSION}-el9.tar.gz"; \
+    BASE="${RELEASE_BASE_URL}/${TAG}"; \
+    echo "Expected sha256: ${RUNTIME_TARBALL_SHA256:-<unset, will fall back to release SHA256SUMS>}"; \
+    curl -fsSL "${BASE}/${TAR}" -o /tmp/${TAR}; \
+    if [ -n "${RUNTIME_TARBALL_SHA256}" ]; then \
+      echo "${RUNTIME_TARBALL_SHA256}  /tmp/${TAR}" | sha256sum -c -; \
+    else \
+      curl -fsSL "${BASE}/SHA256SUMS" -o /tmp/SHA256SUMS; \
+      ( cd /tmp && grep " ${TAR}\$" SHA256SUMS | sha256sum -c - ); \
+      rm -f /tmp/SHA256SUMS; \
+    fi; \
+    tar -xzf /tmp/${TAR} -C /cube; \
+    rm -f /tmp/${TAR}
+
+# In a monorepo build the `cubejs` CLI wrapper isn't compiled, so we point
+# straight at `cubejs-server` from @cubejs-backend/server (same thing the
+# wrapper would call after parsing `server`).
+RUN ln -s /cube/node_modules/.bin/cubejs-server /usr/local/bin/cubejs-server \
+ && ln -s /cube/node_modules/.bin/cubestore-dev /usr/local/bin/cubestore-dev
+
+WORKDIR /cube/conf
+EXPOSE 4000 3030
+CMD ["cubejs-server"]

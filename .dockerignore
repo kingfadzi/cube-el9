@@ -1,0 +1,14 @@
+# Keep the build context small. Everything we COPY in must NOT be ignored.
+.git
+.gitignore
+*.md
+.env
+.env.*
+build/
+dist/
+!ca/
+!vendor/
+!Dockerfile
+!Dockerfile.runtime
+node_modules
+.DS_Store
