@@ -2,8 +2,14 @@
 
 Prebuilt Cube.js for AlmaLinux 9 / RHEL 9.
 
-Lab cuts a release tarball; on-prem rebuilds the runtime image against the
-blessed RHEL UBI 9 base, pulling the same tarball from the GitHub release.
+Lab cuts a release tarball; on-prem rebuilds the runtime image against a
+**bare RHEL UBI 9** image, pulling the same tarball from the GitHub release.
+`Dockerfile.runtime` installs Node 20 itself from the EL9 AppStream module —
+the base image does NOT need Node preinstalled.
+
+> **EL9 is required, not EL8.** The cubestored binary needs symbols up to
+> `GLIBC_2.30`; RHEL 8 ships glibc 2.28 and will fail at startup with
+> `/lib64/libm.so.6: GLIBC_2.29 not found`. RHEL UBI 9 ships glibc 2.34 ✓.
 
 ## Prereqs
 
@@ -14,8 +20,10 @@ blessed RHEL UBI 9 base, pulling the same tarball from the GitHub release.
 
 **On-prem** (RHEL 9):
 - `docker compose`
-- Reachability to GitHub releases (the runtime image is built locally against the blessed RHEL UBI 9 base — the lab's AlmaLinux-based image is **not** consumed on-prem)
-- Pull access to your on-prem registry for the RHEL UBI 9 base image
+- Reachability to GitHub releases (the runtime image is built locally)
+- Pull access to a bare **RHEL UBI 9** image in your on-prem registry
+  (e.g. `registry.onprem.example.com/ubi9/ubi:latest`) — Node 20 is
+  installed during build from EL9 AppStream
 - Postgres reachable from the docker host
 
 ## Lab — cut a release
@@ -46,7 +54,7 @@ $EDITOR .env   # see below
 
 Edit `.env`:
 ```ini
-RUNTIME_BASE_IMAGE=registry.onprem.example.com/builder-images/rhel9-node:22
+RUNTIME_BASE_IMAGE=registry.onprem.example.com/ubi9/ubi:latest
 CUBE_VERSION=v1.6.44
 RELEASE_BASE_URL=https://github.com/kingfadzi/cube-el9/releases/download
 
@@ -66,8 +74,9 @@ CUBESTORE_DATA_DIR=/cube/.cubestore
 
 ## On-prem — start cube
 
-Build the runtime image against the blessed RHEL UBI 9 base (curls the
-release tarball from GitHub, sha-verifies, extracts), then bring it up:
+Build the runtime image against bare RHEL UBI 9 (installs Node 20 from EL9
+AppStream, curls the release tarball from GitHub, sha-verifies, extracts),
+then bring it up:
 ```bash
 docker compose build cube
 docker compose up -d cube

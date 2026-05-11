@@ -10,7 +10,9 @@
 #   docker compose build cube
 #
 # Required build args (fed from .env via docker compose):
-#   RUNTIME_BASE_IMAGE   EL9 base image (AL9 in lab, RHEL 9 on-prem)
+#   RUNTIME_BASE_IMAGE   Bare EL9 base — `almalinux:9` (lab) or `ubi9/ubi` (on-prem).
+#                        Node 20 is installed below from the EL9 AppStream module,
+#                        so the base image does NOT need Node preinstalled.
 #   CUBE_VERSION         Cube tag (e.g. v1.6.44) — must match a published release
 #   RELEASE_BASE_URL     e.g. https://github.com/kingfadzi/cube-el9/releases/download
 
@@ -43,10 +45,15 @@ ENV HTTP_PROXY=$HTTP_PROXY \
     PYTHONUNBUFFERED=1 \
     NODE_PATH=/cube/conf/node_modules:/cube/node_modules
 
-# Runtime libs only. curl is needed to fetch the release tarball.
-RUN dnf -y install --allowerasing --setopt=install_weak_deps=False \
+# Node 20 from EL9 AppStream + runtime libs. curl is needed to fetch the
+# release tarball. Pinning nodejs:20 keeps lab/on-prem on the same major as
+# the upstream cubejs/cube image (Node 20.x).
+RUN dnf -y module enable nodejs:20 \
+ && dnf -y install --allowerasing --setopt=install_weak_deps=False \
+      nodejs \
       openssl-libs python3.11 ca-certificates curl tar gzip \
- && dnf clean all
+ && dnf clean all \
+ && node --version
 
 # Optional corporate CA bundle (defaults to copying this Dockerfile — no-op).
 COPY ${CORP_CA_BUNDLE} /tmp/corp-ca.pem
