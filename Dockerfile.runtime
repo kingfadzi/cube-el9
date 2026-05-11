@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-#
 # Slim on-prem runtime image for Cube.js.
 #
 # Pulls a prebuilt /cube tree (compiled in the lab on AlmaLinux 9) from a

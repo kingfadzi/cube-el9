@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-#
 # LAB-ONLY: extract prebuilt /cube from the official cubejs/cube image.
 #
 # Invoked exclusively by build/build-release.sh in the lab. The script does
