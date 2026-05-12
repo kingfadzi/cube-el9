@@ -46,21 +46,12 @@ ENV HTTP_PROXY=$HTTP_PROXY \
 # Node 20 from EL9 AppStream + runtime libs. curl is needed to fetch the
 # release tarball. Pinning nodejs:20 keeps lab/on-prem on the same major as
 # the upstream cubejs/cube image (Node 20.x).
-#
-# gcc-toolset-13-libstdc++-devel: prebuilt cube binaries (cubestore, the
-# native node addons) link against GLIBCXX_3.4.30 which is gcc 12+. EL9
-# base libstdc++ only ships up to GLIBCXX_3.4.29. The gcc-toolset-13
-# package ships a newer libstdc++.so.6 alongside the stock one, picked
-# up via LD_LIBRARY_PATH below.
 RUN dnf -y module enable nodejs:20 \
  && dnf -y install --allowerasing --setopt=install_weak_deps=False \
       nodejs \
       openssl-libs python3.11 ca-certificates curl tar gzip \
-      gcc-toolset-13-libstdc++-devel \
  && dnf clean all \
  && node --version
-
-ENV LD_LIBRARY_PATH=/opt/rh/gcc-toolset-13/root/usr/lib64
 
 # Optional corporate CA bundle (defaults to copying this Dockerfile — no-op).
 COPY ${CORP_CA_BUNDLE} /tmp/corp-ca.pem
