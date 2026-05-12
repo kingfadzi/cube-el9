@@ -27,16 +27,24 @@ FROM ${BUILDER_IMAGE_NODE_22} AS builder
 COPY --from=upstream /cube /cube-src
 
 # duckdb is the only known offender today. Add others here if found.
-# The build-time guard fails the release if duckdb still emits a
-# GLIBCXX_3.4.30+ symbol -- catches regressions in the lab, not on prem.
+# `npm rebuild` in place fails because upstream's prod install pruned
+# /cube-src/node_modules/duckdb/src/* while keeping binding.gyp that
+# references it. Fresh-install in /tmp to pull full source from the
+# registry, then drop the resulting .node into the cube tree.
+# Build-time guard fails the release if the rebuilt .node still emits
+# a GLIBCXX_3.4.30+ symbol -- catches regressions in the lab, not on prem.
 RUN dnf -y install --setopt=install_weak_deps=False gcc-c++ make python3 \
  && dnf clean all \
- && cd /cube-src/node_modules/duckdb \
- && rm -rf lib/binding build \
- && npm_config_build_from_source=true npm rebuild \
- && if strings -a lib/binding/duckdb.node | grep -qE '^GLIBCXX_3\.4\.3[0-9]'; then \
+ && DUCKDB_VERSION=$(node -p "require('/cube-src/node_modules/duckdb/package.json').version") \
+ && echo ">>> rebuilding duckdb@${DUCKDB_VERSION} from source on EL9" \
+ && mkdir -p /tmp/duckdb-build && cd /tmp/duckdb-build \
+ && npm init -y >/dev/null \
+ && npm_config_build_from_source=true npm install --no-save --foreground-scripts "duckdb@${DUCKDB_VERSION}" \
+ && cp node_modules/duckdb/lib/binding/duckdb.node /cube-src/node_modules/duckdb/lib/binding/duckdb.node \
+ && cd / && rm -rf /tmp/duckdb-build \
+ && if strings -a /cube-src/node_modules/duckdb/lib/binding/duckdb.node | grep -qE '^GLIBCXX_3\.4\.3[0-9]'; then \
       echo "duckdb.node still requires GLIBCXX_3.4.30+ after rebuild" >&2; \
-      strings -a lib/binding/duckdb.node | grep '^GLIBCXX' | sort -u >&2; \
+      strings -a /cube-src/node_modules/duckdb/lib/binding/duckdb.node | grep '^GLIBCXX' | sort -u >&2; \
       exit 1; \
     fi
 CMD ["true"]
